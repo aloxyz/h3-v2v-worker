@@ -39,6 +39,30 @@ print('comfy_aimdo.__path__:', list(comfy_aimdo.__path__)); \
 import comfy_aimdo.malloc_graph; \
 print('import comfy_aimdo.malloc_graph OK')"
 
+# Stesso identico bug di uv, stavolta su comfy-kitchen: la build installava
+# "+ comfy-kitchen==0.2.34" (visibile nel log di uv), ma a runtime ComfyUI
+# stesso segnalava "Installed comfy-kitchen version 0.2.31 is lower than the
+# recommended version 0.2.34" — il pacchetto vero rimaneva 0.2.31. Passava
+# inosservato in build perché lì è solo un avviso, ma a runtime causa un
+# crash reale: 0.2.31 non ha ancora il parametro input_act_weight che il
+# resto di ComfyUI 0.36 si aspetta su int8_linear (usato dai pesi int8
+# quantizzati del modello H3), quindi ogni generazione falliva con
+# "int8_linear() got an unexpected keyword argument 'input_act_weight'".
+# Stessa correzione: bypassiamo uv, scarichiamo ed estraiamo la wheel a mano.
+RUN python3 -c "\
+import urllib.request, zipfile, io, site, os; \
+url = 'https://files.pythonhosted.org/packages/28/0f/c30f26d33bfa2685433a7d3993d438dcff9f6d97f0b8b531f9a6793562d2/comfy_kitchen-0.2.34-cp312-abi3-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl'; \
+data = urllib.request.urlopen(url).read(); \
+target = site.getsitepackages()[0]; \
+zipfile.ZipFile(io.BytesIO(data)).extractall(target); \
+print('estratti', len(data), 'byte in', target)"
+
+# Diagnostica temporanea: conferma la versione installata, prima di
+# rimuovere questo passaggio.
+RUN python3 -c "\
+import comfy_kitchen; \
+print('comfy_kitchen.__version__:', getattr(comfy_kitchen, '__version__', '?'))"
+
 # extra_model_paths.yaml personalizzato: aggiunge model_patches/ (dove sta il
 # Fun ControlNet di H3) alle cartelle già mappate dal Network Volume — quello
 # di default del worker non lo include.
