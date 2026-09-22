@@ -11,25 +11,33 @@ ARG COMFYUI_VERSION=0.36.0
 RUN cd /comfyui && \
     git fetch --depth 1 origin tag v${COMFYUI_VERSION} && \
     git checkout -f v${COMFYUI_VERSION} && \
-    uv pip install -r requirements.txt && \
-    # Bug osservato nella build: per comfy-aimdo (pacchetto con moduli nativi
-    # compilati, es. malloc_graph) uv a volte risolve la wheel "py3-none-any"
-    # (uno stub senza i moduli compilati) invece di quella per questa
-    # piattaforma — forziamo esplicitamente la wheel Linux x86_64 corretta.
-    uv pip install --force-reinstall --no-deps \
-      "https://files.pythonhosted.org/packages/1a/bc/aa38d79aed78aee21d1186e056f8b8e348c6af78874d6f7ed257a6dddf5d/comfy_aimdo-0.5.3-cp39-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl"
+    uv pip install -r requirements.txt
 
-# Diagnostica temporanea: il pacchetto sopra funziona in un ambiente Python
-# pulito locale, ma fallisce qui con "No module named comfy_aimdo.malloc_graph".
-# Questo passaggio mostra dove Python cerca davvero il pacchetto in QUESTO
-# ambiente (namespace package: potrebbe essere sparso su più cartelle, una
-# delle quali incompleta) prima di indovinare altri fix alla cieca.
+# Bug osservato nella build: dopo l'install sopra manca il file
+# comfy_aimdo/malloc_graph.py (tutti gli altri file del pacchetto, inclusi i
+# moduli nativi .so, ci sono). La wheel su PyPI contiene di sicuro quel file
+# (verificato scaricandola e ispezionandola a parte) e "uv pip install
+# --force-reinstall" dalla stessa URL dà lo stesso risultato incompleto —
+# sembra una cache di uv corrotta/incompleta che force-reinstall non invalida.
+# Bypassiamo del tutto uv per questo pacchetto: scarichiamo la wheel e la
+# scompattiamo noi stessi con zipfile, senza passare da nessuna cache.
 RUN python3 -c "\
-import comfy_aimdo, os, sys; \
+import urllib.request, zipfile, io, site, os; \
+url = 'https://files.pythonhosted.org/packages/1a/bc/aa38d79aed78aee21d1186e056f8b8e348c6af78874d6f7ed257a6dddf5d/comfy_aimdo-0.5.3-cp39-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl'; \
+data = urllib.request.urlopen(url).read(); \
+target = site.getsitepackages()[0]; \
+zipfile.ZipFile(io.BytesIO(data)).extractall(target); \
+print('estratti', len(data), 'byte in', target); \
+print(sorted(os.listdir(os.path.join(target, 'comfy_aimdo'))))"
+
+# Diagnostica temporanea: conferma che ora malloc_graph.py c'è davvero e che
+# l'import funziona, prima di rimuovere questo passaggio.
+RUN python3 -c "\
+import comfy_aimdo, os; \
 print('comfy_aimdo.__path__:', list(comfy_aimdo.__path__)); \
 [print(p, '->', sorted(os.listdir(p)) if os.path.isdir(p) else 'MANCA') for p in comfy_aimdo.__path__]; \
-print('sys.path:', sys.path); \
-import comfy_aimdo.malloc_graph"
+import comfy_aimdo.malloc_graph; \
+print('import comfy_aimdo.malloc_graph OK')"
 
 # extra_model_paths.yaml personalizzato: aggiunge model_patches/ (dove sta il
 # Fun ControlNet di H3) alle cartelle già mappate dal Network Volume — quello
