@@ -19,6 +19,18 @@ RUN cd /comfyui && \
     uv pip install --force-reinstall --no-deps \
       "https://files.pythonhosted.org/packages/1a/bc/aa38d79aed78aee21d1186e056f8b8e348c6af78874d6f7ed257a6dddf5d/comfy_aimdo-0.5.3-cp39-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl"
 
+# Diagnostica temporanea: il pacchetto sopra funziona in un ambiente Python
+# pulito locale, ma fallisce qui con "No module named comfy_aimdo.malloc_graph".
+# Questo passaggio mostra dove Python cerca davvero il pacchetto in QUESTO
+# ambiente (namespace package: potrebbe essere sparso su più cartelle, una
+# delle quali incompleta) prima di indovinare altri fix alla cieca.
+RUN python3 -c "\
+import comfy_aimdo, os, sys; \
+print('comfy_aimdo.__path__:', list(comfy_aimdo.__path__)); \
+[print(p, '->', sorted(os.listdir(p)) if os.path.isdir(p) else 'MANCA') for p in comfy_aimdo.__path__]; \
+print('sys.path:', sys.path); \
+import comfy_aimdo.malloc_graph"
+
 # extra_model_paths.yaml personalizzato: aggiunge model_patches/ (dove sta il
 # Fun ControlNet di H3) alle cartelle già mappate dal Network Volume — quello
 # di default del worker non lo include.
