@@ -41,7 +41,7 @@ print('import comfy_aimdo.malloc_graph OK')"
 
 # Stesso identico bug di uv, stavolta su comfy-kitchen: la build installava
 # "+ comfy-kitchen==0.2.34" (visibile nel log di uv), ma a runtime ComfyUI
-# stesso segnalava "Installed comfy-kitchen version 0.2.31 is lower than the
+# stesso segnalava "Installed comfy-kitchen version 0.2.31 is lower than la
 # recommended version 0.2.34" — il pacchetto vero rimaneva 0.2.31. Passava
 # inosservato in build perché lì è solo un avviso, ma a runtime causa un
 # crash reale: 0.2.31 non ha ancora il parametro input_act_weight che il
@@ -67,6 +67,20 @@ print('comfy_kitchen.__version__:', getattr(comfy_kitchen, '__version__', '?'))"
 # Fun ControlNet di H3) alle cartelle già mappate dal Network Volume — quello
 # di default del worker non lo include.
 COPY extra_model_paths.yaml /comfyui/extra_model_paths.yaml
+
+# DynamicVRAM (comfy_aimdo) è il caricamento VRAM "adattivo" diventato
+# default in ComfyUI da febbraio 2026 — ha bug noti e ancora aperti proprio
+# su MiniMax H3 (issue #15628 su Comfy-Org/ComfyUI: corruzione del contesto
+# CUDA durante il prefetch dei pesi H3, con esiti che vanno dall'hang al
+# risultato silenziosamente sbagliato). Sospettato come causa del V2V che
+# restituiva sempre lo stesso identico video byte per byte a ogni
+# generazione (seed/maschera/prompt/forza diversi, persino con il Fun
+# ControlNet bypassato del tutto a forza 0) su worker riusati — coerente con
+# una cache/replay interna al gestore di memoria, non col nostro workflow.
+# --disable-dynamic-vram torna al vecchio caricamento a stima: più lento ma
+# maturo; nessun rischio di OOM con GPU da 96GB.
+RUN sed -i 's/--log-stdout &/--log-stdout --disable-dynamic-vram \&/' /start.sh && \
+    grep -n "disable-dynamic-vram" /start.sh
 
 # Verifica di build: avvia ComfyUI (importa l'intero grafo dei nodi) così una
 # dipendenza rotta fa fallire QUI la build, non in un worker già in produzione.
